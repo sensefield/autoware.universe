@@ -221,6 +221,7 @@ private:
   std::unique_ptr<autoware::universe_utils::LoggerLevelConfigure> logger_configure_;
 
   HyperParameters param_;
+  geometry_msgs::msg::Pose previous_pose_msg_;
 };
 
 }  // namespace autoware::ndt_scan_matcher

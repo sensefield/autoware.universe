@@ -110,8 +110,12 @@ NDTScanMatcher::NDTScanMatcher(const rclcpp::NodeOptions & options)
   map_update_timer_ = rclcpp::create_timer(
     this, this->get_clock(), period_ns, std::bind(&NDTScanMatcher::callback_timer, this),
     timer_callback_group_);
-  initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+  /* initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
     "ekf_pose_with_covariance", 100,
+    std::bind(&NDTScanMatcher::callback_initial_pose, this, std::placeholders::_1),
+    initial_pose_sub_opt); */
+  initial_pose_sub_ = this->create_subscription<geometry_msgs::msg::PoseWithCovarianceStamped>(
+    "initial_pose", 100,
     std::bind(&NDTScanMatcher::callback_initial_pose, this, std::placeholders::_1),
     initial_pose_sub_opt);
   sensor_points_sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -270,6 +274,7 @@ void NDTScanMatcher::callback_initial_pose_main(
   }
 
   initial_pose_buffer_->push_back(initial_pose_msg_ptr);
+  previous_pose_msg_ = initial_pose_msg_ptr->pose.pose;
 
   {
     // latest_ekf_position_ is also used by callback_timer, so it is necessary to acquire the lock
@@ -365,6 +370,16 @@ bool NDTScanMatcher::callback_sensor_points_main(
   const std::string & sensor_frame = sensor_points_msg_in_sensor_frame->header.frame_id;
 
   pcl::fromROSMsg(*sensor_points_msg_in_sensor_frame, *sensor_points_in_sensor_frame);
+
+  /* publish latest odometry */
+  nav_msgs::msg::Odometry odometry;
+  odometry.header.stamp = current_ekf_pose.header.stamp;
+  odometry.header.frame_id = current_ekf_pose.header.frame_id;
+  odometry.child_frame_id = "base_link";
+  odometry.pose = pose_cov.pose;
+  odometry.twist = twist_cov.twist;
+  pub_odom_->publish(odometry);
+
 
   // transform sensor points from sensor-frame to base_link
   try {
@@ -468,8 +483,10 @@ bool NDTScanMatcher::callback_sensor_points_main(
   }
 
   // perform ndt scan matching
+  // const Eigen::Matrix4f initial_pose_matrix =
+  //  pose_to_matrix4f(interpolation_result.interpolated_pose.pose.pose);
   const Eigen::Matrix4f initial_pose_matrix =
-    pose_to_matrix4f(interpolation_result.interpolated_pose.pose.pose);
+    pose_to_matrix4f(previous_pose_msg_);
   auto output_cloud = std::make_shared<pcl::PointCloud<PointSource>>();
   ndt_ptr_->align(*output_cloud, initial_pose_matrix);
   const pclomp::NdtResult ndt_result = ndt_ptr_->getResult();
@@ -645,6 +662,9 @@ bool NDTScanMatcher::callback_sensor_points_main(
   autoware::universe_utils::transformPointCloud(
     *sensor_points_in_baselink_frame, *sensor_points_in_map_ptr, ndt_result.pose);
   publish_point_cloud(sensor_ros_time, param_.frame.map_frame, sensor_points_in_map_ptr);
+
+  // set result_pose_msg as previous_pose_msg
+  previous_pose_msg_ = result_pose_msg;
 
   // check each of point score
   const float lower_nvs = 1.0f;

@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
 <launch>
+  <!--
   <group>
     <include file="$(find-pkg-share autoware_ekf_localizer)/launch/ekf_localizer.launch.xml">
       <arg name="input_initial_pose_name" value="/initialpose3d"/>
@@ -15,6 +16,7 @@
       <arg name="param_file" value="$(var ekf_localizer_param_path)"/>
     </include>
   </group>
+  -->
 
   <group>
     <include file="$(find-pkg-share autoware_stop_filter)/launch/stop_filter.launch.xml">
